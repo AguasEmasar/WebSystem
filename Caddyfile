@@ -1,0 +1,7 @@
+https://admin.emasar.org/ {
+    # Usa /app/dist porque Nixpacks colocará el build ahí
+    root * /app/dist  
+    file_server
+    try_files {path} /index.html
+    encode gzip
+}
