@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { FiSearch, FiTrash, FiUser, FiUserPlus } from "react-icons/fi";
 import { MdOutlineAssignmentInd } from "react-icons/md";
 import { roleService } from "../../../services/roleService";
@@ -7,9 +7,10 @@ import Sidebar from "../../components/Sidebar";
 import Header from "../../components/Header";
 
 export default function UserManagement() {
-  const [users, setUsers] = useState([]); // Inicializa `users` como un array vacío
-  const [roles, setRoles] = useState([]); // Inicializa `roles` como un array vacío
+  const [users, setUsers] = useState([]); // Usuarios
+  const [roles, setRoles] = useState([]); // Roles
   const [loading, setLoading] = useState(true);
+  const [assigning, setAssigning] = useState(false); // Para controlar estado asignación
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedRole, setSelectedRole] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -21,11 +22,10 @@ export default function UserManagement() {
           roleService.getAllUsers(),
           roleService.getRole(),
         ]);
-
-        // Asegúrate de que `usersResponse` y `rolesResponse` sean arrays
         setUsers(usersResponse || []);
         setRoles(rolesResponse || []);
       } catch (error) {
+        alert("Error al obtener los datos");
         console.error("Error al obtener los datos", error);
       } finally {
         setLoading(false);
@@ -36,22 +36,25 @@ export default function UserManagement() {
 
   const handleAssignRole = async () => {
     if (!selectedUser || !selectedRole) {
-      console.error("Seleccione un usuario y un rol");
+      alert("Seleccione un usuario y un rol");
       return;
     }
     try {
-      const response = await axios.post(
-        `/account/assign-role/${selectedUser.id}`,
-        { roleName: selectedRole }
-      );
-      // console.log("Rol asignado correctamente:", response.data);
+      setAssigning(true);
+      await axios.post(`/account/assign-role/${selectedUser.id}`, {
+        roleName: selectedRole,
+      });
       const updatedUsers = await roleService.getAllUsers();
       setUsers(updatedUsers || []);
+      alert("Rol asignado correctamente");
+      // Limpiar selección si quieres
+      setSelectedUser(null);
+      setSelectedRole("");
     } catch (error) {
-      console.error(
-        "Error al asignar role: ",
-        error.response?.data || error.message
-      );
+      alert(error.response?.data?.message || "Error al asignar rol");
+      console.error("Error al asignar rol:", error);
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -60,18 +63,27 @@ export default function UserManagement() {
       await roleService.removeRole(userId, roleName);
       const updatedUsers = await roleService.getAllUsers();
       setUsers(updatedUsers || []);
+      alert(`Rol ${roleName} eliminado correctamente`);
     } catch (error) {
+      alert("Error al eliminar el rol");
       console.error("Error al eliminar el rol", error);
     }
   };
 
-  // Filtra los usuarios basados en el término de búsqueda
-  const filteredUsers = users.filter((user) =>
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((user) =>
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      ),
+    [users, searchTerm]
   );
 
   if (loading) {
-    return <div>Cargando...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="text-xl font-medium">Cargando datos...</div>
+      </div>
+    );
   }
 
   return (
@@ -93,7 +105,6 @@ export default function UserManagement() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            {/* Icono de búsqueda */}
             <div className="absolute inset-y-0 left-0 flex items-center pl-3">
               <FiSearch className="text-gray-500" />
             </div>
@@ -111,18 +122,22 @@ export default function UserManagement() {
                 </label>
                 <select
                   className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                  value={selectedUser?.id || ""}
+                  value={selectedUser?.id?.toString() || ""}
                   onChange={(e) => {
-                    const user = users.find((u) => u.id === e.target.value);
+                    const user = users.find(
+                      (u) => u.id.toString() === e.target.value
+                    );
                     setSelectedUser(user);
                   }}
                 >
                   <option value="">Selecciona un usuario</option>
-                  {filteredUsers.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.firstName} {user.lastName}
-                    </option>
-                  ))}
+                  {[...filteredUsers]
+                    .sort((a, b) => a.firstName.localeCompare(b.firstName))
+                    .map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.firstName} {user.lastName}
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -147,9 +162,20 @@ export default function UserManagement() {
               <div className="flex items-end">
                 <button
                   onClick={handleAssignRole}
-                  className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 flex items-center"
+                  disabled={assigning}
+                  className={`rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 flex items-center ${
+                    assigning
+                      ? "bg-indigo-400 cursor-not-allowed"
+                      : "bg-indigo-600 hover:bg-indigo-500 focus:ring-indigo-600"
+                  }`}
                 >
-                  <FiUserPlus className="mr-2" /> Asignar Rol
+                  {assigning ? (
+                    "Asignando..."
+                  ) : (
+                    <>
+                      <FiUserPlus className="mr-2" /> Asignar Rol
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -212,6 +238,16 @@ export default function UserManagement() {
                       </td>
                     </tr>
                   ))}
+                  {filteredUsers.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="text-center py-4 text-sm text-gray-500"
+                      >
+                        No se encontraron usuarios.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

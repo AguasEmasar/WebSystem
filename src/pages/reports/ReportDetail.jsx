@@ -1,9 +1,23 @@
-import { Modal } from "antd";
 import axios from "../../api/axios";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import "antd/dist/reset.css";
+import {
+  ArrowLeft,
+  Calendar,
+  FileText,
+  User,
+  Phone,
+  MapPin,
+  Hash,
+  CreditCard,
+  MessageSquare,
+  Image as ImageIcon,
+  X,
+  RefreshCw,
+  AlertCircle,
+  Download,
+  ZoomIn,
+} from "lucide-react";
 import BackButton from "../../components/buttons/BackButton";
 import AssignButton from "../../components/buttons/AssignButton";
 
@@ -11,18 +25,23 @@ export const ReportDetail = ({ id }) => {
   const [report, setReport] = useState(null);
   const [states, setStates] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchReport = async () => {
       try {
+        setLoading(true);
+        setError(null);
         const response = await axios.get(`/report/byid/${id}`);
         setReport(response.data.data);
       } catch (error) {
-        console.error(
-          "Error fetching report:",
-          error.response ? error.response.data : error.message
-        );
+        console.error("Error fetching report:", error);
+        setError("Error al cargar el reporte. Por favor intente nuevamente.");
+      } finally {
+        setLoading(false);
       }
     };
     fetchReport();
@@ -34,17 +53,21 @@ export const ReportDetail = ({ id }) => {
         const response = await axios.get("/state");
         setStates(response.data.data);
       } catch (error) {
-        console.error(
-          "Error fetching states:",
-          error.response ? error.response.data : error.message
-        );
+        console.error("Error fetching states:", error);
       }
     };
     fetchStates();
   }, []);
 
   const formatDate = (dateString) => {
-    const options = { day: "2-digit", month: "2-digit", year: "2-digit" };
+    if (!dateString) return "N/A";
+    const options = {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    };
     return new Date(dateString).toLocaleDateString("es-ES", options);
   };
 
@@ -70,120 +93,340 @@ export const ReportDetail = ({ id }) => {
         state: { name: newState },
       }));
     } catch (error) {
-      console.error(
-        "Error changing state:",
-        error.response ? error.response.data : error.message
-      );
+      console.error("Error changing state:", error);
     }
   };
 
-  const openModal = () => setModalOpen(true);
-  const closeModal = () => setModalOpen(false);
+  const openImageModal = (imageUrl) => {
+    setSelectedImage(imageUrl);
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setSelectedImage("");
+  };
+
+  const downloadImage = async (url, filename) => {
+    try {
+      const response = await axios.get(url, { responseType: "blob" });
+      const urlBlob = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = urlBlob;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(urlBlob);
+    } catch (error) {
+      console.error("Error al descargar la imagen:", error);
+    }
+  };
+
+  const getStateStyle = (state) => {
+    switch (state) {
+      case "asignado":
+        return "bg-green-100 text-green-700 border-green-200";
+      case "pendiente":
+        return "bg-yellow-100 text-yellow-700 border-yellow-200";
+      case "completado":
+        return "bg-blue-100 text-blue-700 border-blue-200";
+      case "no asignado":
+        return "bg-gray-100 text-gray-700 border-gray-200";
+      default:
+        return "bg-gray-100 text-gray-700 border-gray-200";
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Cargando detalles del reporte...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md">
+          <div className="text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Error</h3>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              Recargar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!report) {
-    return <div className="container mx-auto p-4">Cargando...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-gray-600">No se encontró el reporte</p>
+      </div>
+    );
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-800">
-          Detalles del Reporte
-        </h1>
-        <div className="flex space-x-2">
-          <AssignButton report={report} changeState={changeState} />
-          <BackButton onClick={() => navigate(-1)} />
-        </div>
-      </div>
-      <div className="bg-white shadow-md rounded-lg p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <p>
-            <strong>Fecha:</strong> {formatDate(report.date)}
-          </p>
-          <p>
-            <strong>Reporte:</strong> {report.report}
-          </p>
-          <p>
-            <strong>Clave Catastral:</strong> {report.key}
-          </p>
-          <p>
-            <strong>Nombre:</strong> {report.name}
-          </p>
-          <p>
-            <strong>DNI:</strong> {report.dni}
-          </p>
-          <p>
-            <strong>Teléfono:</strong> {report.cellphone}
-          </p>
-          <p>
-            <strong>Dirección:</strong> {report.direction}
-          </p>
-          <p>
-            <strong>Estado:</strong> {report.state.name}
-          </p>
-          <p>
-            <strong>Observación:</strong> {report.observation}
-          </p>
-
-          {/* Parte del Jeffrey */}
-          <p className="font-semibold mb-2">Imagenes:</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Array.isArray(report.urls) && report.urls.length > 0 ? (
-              report.urls.map((url, index) => (
-                <img
-                  key={index}
-                  src={url}
-                  alt={`Reporte imagen: ${index + 1}`}
-                  className="w-full max-w-lg mx-auto rounded-lg shadow-md"
-                />
-              ))
-            ) : (
-              <p>No hay imágenes disponibles.</p>
-            )}
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigate(-1)}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Detalle del Reporte
+                </h1>
+                <p className="text-gray-600">
+                  Información completa de la incidencia
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-medium border ${getStateStyle(
+                  report.state?.name
+                )}`}
+              >
+                {report.state?.name || "N/A"}
+              </span>
+              <AssignButton report={report} changeState={changeState} />
+            </div>
           </div>
         </div>
-        {report.url && (
-          <div className="mb-6">
-            <p className="font-bold mb-2">Imagen del reporte</p>
-            <img
-              src={report.url}
-              alt="Reporte"
-              className="w-[200px] h-auto max-w-3xl rounded-lg shadow-md object-contain cursor-pointer"
-              onClick={openModal}
-            />
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Información Principal */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Información del Reporte */}
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <FileText className="w-5 h-5 mr-2 text-indigo-600" />
+                Información del Reporte
+              </h2>
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3">
+                  <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-gray-600">Fecha</p>
+                    <p className="font-medium text-gray-900">
+                      {formatDate(report.date)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <Hash className="w-5 h-5 text-gray-400 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-gray-600">Clave Catastral</p>
+                    <p className="font-medium text-gray-900 font-mono">
+                      {report.key || "N/A"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-gray-600">Descripción</p>
+                    <p className="text-gray-900">{report.report}</p>
+                  </div>
+                </div>
+                {report.observation && (
+                  <div className="flex items-start space-x-3">
+                    <MessageSquare className="w-5 h-5 text-gray-400 mt-0.5" />
+                    <div>
+                      <p className="text-sm text-gray-600">Observación</p>
+                      <p className="text-gray-900">{report.observation}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Imágenes */}
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <ImageIcon className="w-5 h-5 mr-2 text-indigo-600" />
+                Imágenes del Reporte
+              </h2>
+
+              {/* Imagen principal */}
+              {report.url && (
+                <div className="mb-6">
+                  <p className="text-sm text-gray-600 mb-3">Imagen principal</p>
+                  <div className="relative group inline-block">
+                    <img
+                      src={report.url}
+                      alt="Imagen principal del reporte"
+                      className="w-64 h-48 object-cover rounded-lg border cursor-pointer transition-transform hover:scale-105"
+                      onClick={() => openImageModal(report.url)}
+                    />
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-all flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 flex space-x-2">
+                        <button
+                          onClick={() => openImageModal(report.url)}
+                          className="bg-white rounded-full p-2 shadow-lg hover:bg-gray-50"
+                        >
+                          <ZoomIn className="w-4 h-4 text-gray-700" />
+                        </button>
+                        <button
+                          onClick={() =>
+                            downloadImage(
+                              report.url,
+                              `reporte-${id}-principal.jpg`
+                            )
+                          }
+                          className="bg-white rounded-full p-2 shadow-lg hover:bg-gray-50"
+                        >
+                          <Download className="w-4 h-4 text-gray-700" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Galería de imágenes adicionales */}
+              {Array.isArray(report.urls) && report.urls.length > 0 ? (
+                <div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Imágenes adicionales
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {report.urls.map((url, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={url}
+                          alt={`Imagen ${index + 1}`}
+                          className="w-full h-32 object-cover rounded-lg border cursor-pointer transition-transform hover:scale-105"
+                          onClick={() => openImageModal(url)}
+                        />
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-all flex items-center justify-center">
+                          <div className="opacity-0 group-hover:opacity-100 flex space-x-1">
+                            <button
+                              onClick={() => openImageModal(url)}
+                              className="bg-white rounded-full p-1.5 shadow-lg hover:bg-gray-50"
+                            >
+                              <ZoomIn className="w-3 h-3 text-gray-700" />
+                            </button>
+                            <button
+                              onClick={() =>
+                                downloadImage(
+                                  url,
+                                  `reporte-${id}-${index + 1}.jpg`
+                                )
+                              }
+                              className="bg-white rounded-full p-1.5 shadow-lg hover:bg-gray-50"
+                            >
+                              <Download className="w-3 h-3 text-gray-700" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                !report.url && (
+                  <div className="text-center py-12">
+                    <ImageIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">No hay imágenes disponibles</p>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+
+          {/* Información Personal */}
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <User className="w-5 h-5 mr-2 text-indigo-600" />
+                Información del Reportante
+              </h2>
+              <div className="space-y-4">
+                <div className="flex items-center space-x-3">
+                  <User className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-600">Nombre</p>
+                    <p className="font-medium text-gray-900">
+                      {report.name || "N/A"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <CreditCard className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-600">DNI</p>
+                    <p className="font-medium text-gray-900">
+                      {report.dni || "N/A"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Phone className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-600">Teléfono</p>
+                    <p className="font-medium text-gray-900">
+                      {report.cellphone || "N/A"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-gray-600">Dirección</p>
+                    <p className="text-gray-900">{report.direction || "N/A"}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Modal para ver imágenes */}
+        {modalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-75">
+            <div className="relative max-w-4xl max-h-full">
+              <button
+                onClick={closeModal}
+                className="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"
+              >
+                <X className="w-8 h-8" />
+              </button>
+              <img
+                src={selectedImage}
+                alt="Imagen ampliada"
+                className="max-w-full max-h-full object-contain rounded-lg"
+              />
+              <div className="absolute bottom-4 right-4">
+                <button
+                  onClick={() =>
+                    downloadImage(selectedImage, `imagen-reporte-${id}.jpg`)
+                  }
+                  className="bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-700 rounded-full p-2 shadow-lg transition-all"
+                >
+                  <Download className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
-      <Modal
-        open={modalOpen}
-        onCancel={closeModal}
-        footer={null}
-        className="modal-image"
-        closeIcon={
-          <svg
-            width="24"
-            height="24"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-            className="text-green-600"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M6 18L18 6M6 6l12 12"
-            ></path>
-          </svg>
-        }
-      >
-        <img
-          src={report.url}
-          alt="Reporte"
-          className="w-full h-auto object-contain rounded-lg"
-        />
-      </Modal>
     </div>
   );
 };
