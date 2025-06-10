@@ -1,5 +1,5 @@
 import axios from "../../api/axios";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Download,
   FileText,
@@ -22,15 +22,33 @@ export const ReportList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchData = async () => {
+  // Ref para el intervalo de actualización
+  const intervalRef = useRef(null);
+  const REFRESH_INTERVAL = 5000; // 5 segundos
+
+  // Función para ordenar por fecha (más reciente primero)
+  const sortByDate = useCallback((data, dateField) => {
+    return [...data].sort((a, b) => {
+      const dateA = new Date(a[dateField] || 0);
+      const dateB = new Date(b[dateField] || 0);
+      return dateB - dateA; // Orden descendente (más reciente primero)
+    });
+  }, []);
+
+  // Función para obtener los datos
+  const fetchData = useCallback(
+    async (showLoadingState = true) => {
       try {
-        setLoading(true);
+        if (showLoadingState) {
+          setLoading(true);
+        }
         setError(null);
+
         const [reportsResponse, receiptsResponse] = await Promise.all([
           axios.get("/report"),
           axios.get("/UploadReceipt/all"),
         ]);
+
         const reportsData = Array.isArray(reportsResponse.data.data)
           ? reportsResponse.data.data
           : [];
@@ -38,19 +56,50 @@ export const ReportList = () => {
           ? receiptsResponse.data.data
           : [];
 
-        setReports(reportsData);
-        setReceipts(receiptsData);
-        setFilteredReports(reportsData);
-        setFilteredReceipts(receiptsData);
+        // Ordenar los datos por fecha
+        const sortedReports = sortByDate(reportsData, "date");
+        const sortedReceipts = sortByDate(receiptsData, "fechaSubida");
+
+        setReports(sortedReports);
+        setReceipts(sortedReceipts);
+        setFilteredReports(sortedReports);
+        setFilteredReceipts(sortedReceipts);
       } catch (err) {
         console.error("Error fetching data:", err);
         setError("Error al cargar los datos. Por favor intente nuevamente.");
       } finally {
-        setLoading(false);
+        if (showLoadingState) {
+          setLoading(false);
+        }
+      }
+    },
+    [sortByDate]
+  );
+
+  // Efecto para la carga inicial
+  useEffect(() => {
+    fetchData(true);
+  }, [fetchData]);
+
+  // Efecto para las actualizaciones en tiempo real
+  useEffect(() => {
+    // Limpiar intervalo anterior si existe
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    // Configurar nuevo intervalo para actualizaciones automáticas
+    intervalRef.current = setInterval(() => {
+      fetchData(false); // No mostrar loading en actualizaciones automáticas
+    }, REFRESH_INTERVAL);
+
+    // Limpiar intervalo al desmontar el componente
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
       }
     };
-    fetchData();
-  }, []);
+  }, [fetchData]);
 
   // Filtrar datos cuando cambie el término de búsqueda
   useEffect(() => {
@@ -63,7 +112,8 @@ export const ReportList = () => {
             report.key?.toLowerCase().includes(searchTerm.toLowerCase())
         );
       }
-      setFilteredReports(filtered);
+      // Mantener el orden por fecha después del filtrado
+      setFilteredReports(sortByDate(filtered, "date"));
     } else {
       let filtered = receipts;
       if (searchTerm) {
@@ -71,17 +121,21 @@ export const ReportList = () => {
           receipt.clave?.toLowerCase().includes(searchTerm.toLowerCase())
         );
       }
-      setFilteredReceipts(filtered);
+      // Mantener el orden por fecha después del filtrado
+      setFilteredReceipts(sortByDate(filtered, "fechaSubida"));
     }
-  }, [searchTerm, activeTab, reports, receipts]);
+  }, [searchTerm, activeTab, reports, receipts, sortByDate]);
 
+  // Función para formatear fecha (solo fecha, sin hora)
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
+    const date = new Date(dateString);
+
+    const month = date.toLocaleDateString("es-ES", { month: "2-digit" });
+    const day = date.toLocaleDateString("es-ES", { day: "2-digit" });
+    const year = date.toLocaleDateString("es-ES", { year: "numeric" });
+
+    return `${month}/${day}/${year}`;
   };
 
   const downloadImage = async (url, filename) => {
@@ -111,6 +165,11 @@ export const ReportList = () => {
     }
   };
 
+  // Función para actualización manual
+  const handleManualRefresh = () => {
+    fetchData(true);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -131,7 +190,7 @@ export const ReportList = () => {
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Error</h3>
             <p className="text-gray-600 mb-4">{error}</p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={handleManualRefresh}
               className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
             >
               Recargar
@@ -181,6 +240,14 @@ export const ReportList = () => {
               <div className="text-gray-500 text-sm">
                 {activeTab === "reportes" ? "Reportes" : "Comprobantes"}
               </div>
+              <button
+                onClick={handleManualRefresh}
+                className="mt-2 text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                title="Actualizar manualmente"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Actualizar
+              </button>
             </div>
           </div>
         </div>
@@ -243,7 +310,7 @@ export const ReportList = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Fecha
+                      Fecha ↓
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Incidencia
@@ -312,7 +379,7 @@ export const ReportList = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Fecha
+                      Fecha ↓
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Clave

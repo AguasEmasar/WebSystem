@@ -17,8 +17,9 @@ import {
   AlertCircle,
   Download,
   ZoomIn,
+  ChevronDown,
+  Check,
 } from "lucide-react";
-import BackButton from "../../components/buttons/BackButton";
 import AssignButton from "../../components/buttons/AssignButton";
 
 export const ReportDetail = ({ id }) => {
@@ -28,6 +29,8 @@ export const ReportDetail = ({ id }) => {
   const [selectedImage, setSelectedImage] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
+  const [changingState, setChangingState] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -61,16 +64,42 @@ export const ReportDetail = ({ id }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    const options = {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    };
-    return new Date(dateString).toLocaleDateString("es-ES", options);
+    const date = new Date(dateString);
+
+    const month = date.toLocaleDateString("es-ES", { month: "2-digit" });
+    const day = date.toLocaleDateString("es-ES", { day: "2-digit" });
+    const year = date.toLocaleDateString("es-ES", { year: "numeric" });
+
+    return `${month}/${day}/${year}`;
   };
 
+  const changeStateToSpecific = async (newStateId, newStateName) => {
+    try {
+      setChangingState(true);
+      await axios.put(`/report/${id}/state/${newStateId}`, newStateId, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      setReport((prevReport) => ({
+        ...prevReport,
+        state: {
+          id: newStateId,
+          name: newStateName,
+        },
+      }));
+
+      setStateDropdownOpen(false);
+    } catch (error) {
+      console.error("Error changing state:", error);
+      setError("Error al cambiar el estado. Por favor intente nuevamente.");
+    } finally {
+      setChangingState(false);
+    }
+  };
+
+  // Keep the original changeState function for compatibility with AssignButton
   const changeState = async () => {
     try {
       const newState =
@@ -82,16 +111,7 @@ export const ReportDetail = ({ id }) => {
         return;
       }
 
-      await axios.put(`/report/${id}/state/${newStateId}`, newStateId, {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      setReport((prevReport) => ({
-        ...prevReport,
-        state: { name: newState },
-      }));
+      await changeStateToSpecific(newStateId, newState);
     } catch (error) {
       console.error("Error changing state:", error);
     }
@@ -133,6 +153,21 @@ export const ReportDetail = ({ id }) => {
         return "bg-gray-100 text-gray-700 border-gray-200";
       default:
         return "bg-gray-100 text-gray-700 border-gray-200";
+    }
+  };
+
+  const getStateIcon = (state) => {
+    switch (state) {
+      case "asignado":
+        return "👤";
+      case "pendiente":
+        return "⏳";
+      case "completado":
+        return "✓";
+      case "No asignado":
+        return "✗";
+      default:
+        return "○";
     }
   };
 
@@ -198,17 +233,85 @@ export const ReportDetail = ({ id }) => {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <span
-                className={`px-3 py-1 rounded-full text-sm font-medium border ${getStateStyle(
-                  report.state?.name
-                )}`}
-              >
-                {report.state?.name || "N/A"}
-              </span>
+              {/* Estado con dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setStateDropdownOpen(!stateDropdownOpen)}
+                  disabled={changingState}
+                  className={`px-3 py-1 rounded-full text-sm font-medium border flex items-center space-x-2 transition-all hover:shadow-md ${getStateStyle(
+                    report.state?.name
+                  )} ${
+                    changingState
+                      ? "opacity-50 cursor-not-allowed"
+                      : "cursor-pointer"
+                  }`}
+                >
+                  <span>{getStateIcon(report.state?.name)}</span>
+                  <span>{report.state?.name || "N/A"}</span>
+                  {changingState ? (
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" />
+                  )}
+                </button>
+
+                {/* Dropdown de estados */}
+                {stateDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                    <div className="py-1">
+                      <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b">
+                        Cambiar Estado
+                      </div>
+                      {states.map((state) => (
+                        <button
+                          key={state.id}
+                          onClick={() =>
+                            changeStateToSpecific(state.id, state.name)
+                          }
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between transition-colors ${
+                            report.state?.name === state.name
+                              ? "bg-blue-50 text-blue-700"
+                              : "text-gray-700"
+                          }`}
+                          disabled={changingState}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <span className="text-lg">
+                              {getStateIcon(state.name)}
+                            </span>
+                            <div>
+                              <div className="font-medium capitalize">
+                                {state.name}
+                              </div>
+                              {state.description && (
+                                <div className="text-xs text-gray-500">
+                                  {state.description}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {report.state?.name === state.name && (
+                            <Check className="w-4 h-4 text-blue-600" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <AssignButton report={report} changeState={changeState} />
             </div>
           </div>
         </div>
+
+        {/* Click outside to close dropdown */}
+        {stateDropdownOpen && (
+          <div
+            className="fixed inset-0 z-5"
+            onClick={() => setStateDropdownOpen(false)}
+          ></div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Información Principal */}
@@ -224,7 +327,7 @@ export const ReportDetail = ({ id }) => {
                   <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
                   <div>
                     <p className="text-sm text-gray-600">Fecha</p>
-                    <p className="font-medium text-gray-900">
+                    <p className="font-medium text-gray-900 font-mono">
                       {formatDate(report.date)}
                     </p>
                   </div>
@@ -242,7 +345,9 @@ export const ReportDetail = ({ id }) => {
                   <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
                   <div>
                     <p className="text-sm text-gray-600">Descripción</p>
-                    <p className="text-gray-900">{report.report}</p>
+                    <p className="font-medium text-gray-900 font-mono">
+                      {report.report}
+                    </p>
                   </div>
                 </div>
                 {report.observation && (
@@ -250,7 +355,9 @@ export const ReportDetail = ({ id }) => {
                     <MessageSquare className="w-5 h-5 text-gray-400 mt-0.5" />
                     <div>
                       <p className="text-sm text-gray-600">Observación</p>
-                      <p className="text-gray-900">{report.observation}</p>
+                      <p className="font-medium text-gray-900 font-mono">
+                        {report.observation}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -263,7 +370,6 @@ export const ReportDetail = ({ id }) => {
                 <ImageIcon className="w-5 h-5 mr-2 text-indigo-600" />
                 Imágenes del Reporte
               </h2>
-
               {/* Imagen principal */}
               {report.url && (
                 <div className="mb-6">
@@ -299,7 +405,6 @@ export const ReportDetail = ({ id }) => {
                   </div>
                 </div>
               )}
-
               {/* Galería de imágenes adicionales */}
               {Array.isArray(report.urls) && report.urls.length > 0 ? (
                 <div>
@@ -363,7 +468,7 @@ export const ReportDetail = ({ id }) => {
                   <User className="w-5 h-5 text-gray-400" />
                   <div>
                     <p className="text-sm text-gray-600">Nombre</p>
-                    <p className="font-medium text-gray-900">
+                    <p className="font-medium text-gray-900 font-mono">
                       {report.name || "N/A"}
                     </p>
                   </div>
@@ -372,7 +477,7 @@ export const ReportDetail = ({ id }) => {
                   <CreditCard className="w-5 h-5 text-gray-400" />
                   <div>
                     <p className="text-sm text-gray-600">DNI</p>
-                    <p className="font-medium text-gray-900">
+                    <p className="font-medium text-gray-900 font-mono">
                       {report.dni || "N/A"}
                     </p>
                   </div>
@@ -381,7 +486,7 @@ export const ReportDetail = ({ id }) => {
                   <Phone className="w-5 h-5 text-gray-400" />
                   <div>
                     <p className="text-sm text-gray-600">Teléfono</p>
-                    <p className="font-medium text-gray-900">
+                    <p className="font-medium text-gray-900 font-mono">
                       {report.cellphone || "N/A"}
                     </p>
                   </div>
@@ -390,7 +495,9 @@ export const ReportDetail = ({ id }) => {
                   <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
                   <div>
                     <p className="text-sm text-gray-600">Dirección</p>
-                    <p className="text-gray-900">{report.direction || "N/A"}</p>
+                    <p className="font-medium text-gray-900 font-mono">
+                      {report.direction || "N/A"}
+                    </p>
                   </div>
                 </div>
               </div>
